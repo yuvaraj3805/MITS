@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>File Encryption/Decryption Tool</title>
+<style>
+  :root {
+    --primary: #4c66f5;
+    --secondary: #7b92ff;
+    --background: #1e1e2f;
+    --text-color: #e0e0ff;
+    --border-radius: 8px;
+    --transition: 0.3s ease;
+  }
+
+  body {
+    margin: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #2c2f4a, #1e1e2f);
+    color: var(--text-color);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 2rem;
+  }
+
+  h1 {
+    margin-bottom: 1rem;
+    font-weight: 700;
+    text-align: center;
+    color: var(--primary);
+    text-shadow: 0 0 8px var(--secondary);
+  }
+
+  .container {
+    background: #2b2d42;
+    padding: 2rem;
+    border-radius: var(--border-radius);
+    box-shadow: 0 4px 15px rgba(76, 102, 245, 0.3);
+    width: 100%;
+    max-width: 400px;
+  }
+
+  label {
+    display: block;
+    margin-bottom: 0.3rem;
+    font-weight: 600;
+    color: var(--secondary);
+  }
+
+  input[type="file"],
+  input[type="password"] {
+    width: 100%;
+    padding: 0.4rem 0.6rem;
+    margin-bottom: 1rem;
+    border-radius: var(--border-radius);
+    border: 1px solid #4c66f5a0;
+    background-color: #161823;
+    color: var(--text-color);
+    font-size: 1rem;
+    outline: none;
+    transition: border-color var(--transition);
+  }
+
+  input[type="file"]::-webkit-file-upload-button {
+    background: var(--primary);
+    border: none;
+    padding: 0.4rem 0.8rem;
+    color: white;
+    font-weight: 600;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    transition: background-color var(--transition);
+  }
+
+  input[type="file"]::-webkit-file-upload-button:hover {
+    background: var(--secondary);
+  }
+
+  input[type="password"]:focus {
+    border-color: var(--secondary);
+  }
+
+  .buttons {
+    display: flex;
+    justify-content: space-between;
+  }
+
+  button {
+    flex: 1;
+    background: var(--primary);
+    border: none;
+    color: white;
+    padding: 0.6rem 1rem;
+    margin: 0 0.3rem;
+    font-weight: 700;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background-color var(--transition);
+  }
+
+  button:first-child {
+    margin-left: 0;
+  }
+  button:last-child {
+    margin-right: 0;
+  }
+
+  button:hover:not(:disabled) {
+    background: var(--secondary);
+  }
+
+  button:disabled {
+    background: #555a9d80;
+    cursor: not-allowed;
+  }
+
+  .message {
+    margin-top: 1rem;
+    min-height: 1.4rem;
+    font-weight: 600;
+    color: #f87171; /* default red for errors */
+    text-align: center;
+  }
+
+  .message.success {
+    color: #34d399; /* green */
+  }
+
+  footer {
+    margin-top: auto;
+    font-size: 0.8rem;
+    color: #777aac;
+  }
+</style>
+</head>
+<body>
+<h1>File Encryption / Decryption Tool</h1>
+<div class="container">
+  <label for="fileInput">Select a file:</label>
+  <input type="file" id="fileInput" />
+
+  <label for="passwordInput">Enter password/key:</label>
+  <input type="password" id="passwordInput" placeholder="Enter password" />
+
+  <div class="buttons">
+    <button id="encryptBtn" disabled>Encrypt</button>
+    <button id="decryptBtn" disabled>Decrypt</button>
+  </div>
+
+  <div class="message" id="message"></div>
+</div>
+
+<footer>© 2024 File Encryption Tool • Uses AES-GCM encryption</footer>
+
+<script>
+  const fileInput = document.getElementById('fileInput');
+  const passwordInput = document.getElementById('passwordInput');
+  const encryptBtn = document.getElementById('encryptBtn');
+  const decryptBtn = document.getElementById('decryptBtn');
+  const message = document.getElementById('message');
+
+  let fileBuffer = null;
+  let fileName = '';
+
+  fileInput.addEventListener('change', () => {
+    message.textContent = '';
+    const files = fileInput.files;
+    if (files.length === 0) {
+      resetState();
+      return;
+    }
+    const file = files[0];
+    fileName = file.name;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      fileBuffer = e.target.result;
+      updateButtons();
+    };
+    reader.onerror = () => {
+      showError('Failed to read file');
+      resetState();
+    };
+    reader.readAsArrayBuffer(file);
+  });
+
+  passwordInput.addEventListener('input', () => {
+    message.textContent = '';
+    updateButtons();
+  });
+
+  function updateButtons() {
+    const hasFile = fileBuffer !== null;
+    const hasPassword = passwordInput.value.length > 0;
+    encryptBtn.disabled = !(hasFile && hasPassword);
+    decryptBtn.disabled = !(hasFile && hasPassword);
+  }
+
+  function showError(msg) {
+    message.textContent = msg;
+    message.className = 'message';
+  }
+
+  function showSuccess(msg) {
+    message.textContent = msg;
+    message.className = 'message success';
+  }
+
+  // Convert password string to a CryptoKey using PBKDF2 with salt
+  async function getKeyMaterial(password) {
+    const enc = new TextEncoder();
+    return window.crypto.subtle.importKey(
+      'raw',
+      enc.encode(password),
+      'PBKDF2',
+      false,
+      ['deriveKey']
+    );
+  }
+
+  async function deriveKey(keyMaterial, salt) {
+    return window.crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt: salt,
+        iterations: 100000,
+        hash: 'SHA-256',
+      },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  }
+
+  // Encrypt the data buffer with the password
+  async function encryptData(dataBuffer, password) {
+    const salt = window.crypto.getRandomValues(new Uint8Array(16));
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+    const keyMaterial = await getKeyMaterial(password);
+    const key = await deriveKey(keyMaterial, salt);
+
+    const encrypted = await window.crypto.subtle.encrypt(
+      {
+        name: 'AES-GCM',
+        iv: iv,
+      },
+      key,
+      dataBuffer
+    );
+    // Return a concatenated buffer: salt(16) + iv(12) + encrypted data
+    const encryptedArray = new Uint8Array(encrypted);
+    const result = new Uint8Array(16 + 12 + encryptedArray.length);
+    result.set(salt, 0);
+    result.set(iv, 16);
+    result.set(encryptedArray, 28);
+    return result.buffer;
+  }
+
+  // Decrypt the data buffer with the password
+  async function decryptData(dataBuffer, password) {
+    const dataArray = new Uint8Array(dataBuffer);
+    // Extract salt, iv and encrypted data
+    const salt = dataArray.slice(0, 16);
+    const iv = dataArray.slice(16, 28);
+    const encryptedData = dataArray.slice(28);
+
+    const keyMaterial = await getKeyMaterial(password);
+    const key = await deriveKey(keyMaterial, salt);
+    try {
+      const decrypted = await window.crypto.subtle.decrypt(
+        {
+          name: 'AES-GCM',
+          iv: iv,
+        },
+        key,
+        encryptedData
+      );
+      return decrypted;
+    } catch {
+      throw new Error('Decryption failed. Wrong password or corrupted file.');
+    }
+  }
+
+  function downloadFile(buffer, suggestedName) {
+    const blob = new Blob([buffer]);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = suggestedName;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    }, 100);
+  }
+
+  encryptBtn.addEventListener('click', async () => {
+    encryptBtn.disabled = true;
+    decryptBtn.disabled = true;
+    showSuccess('Encrypting...');
+    try {
+      const password = passwordInput.value;
+      const encryptedBuffer = await encryptData(fileBuffer, password);
+      const encryptedFileName = fileName + '.encrypted';
+      downloadFile(encryptedBuffer, encryptedFileName);
+      showSuccess(`File encrypted successfully as "${encryptedFileName}".`);
+    } catch (err) {
+      showError('Encryption failed: ' + err.message);
+    } finally {
+      updateButtons();
+    }
+  });
+
+  decryptBtn.addEventListener('click', async () => {
+    encryptBtn.disabled = true;
+    decryptBtn.disabled = true;
+    showSuccess('Decrypting...');
+    try {
+      const password = passwordInput.value;
+      const decryptedBuffer = await decryptData(fileBuffer, password);
+      let suggestedName = fileName;
+      if (suggestedName.endsWith('.encrypted')) {
+        suggestedName = suggestedName.slice(0, -10);
+      } else {
+        suggestedName = "decrypted_" + suggestedName;
+      }
+      downloadFile(decryptedBuffer, suggestedName);
+      showSuccess(`File decrypted successfully as "${suggestedName}".`);
+    } catch (err) {
+      showError(err.message);
+    } finally {
+      updateButtons();
+    }
+  });
+
+  function resetState() {
+    fileBuffer = null;
+    fileName = '';
+    encryptBtn.disabled = true;
+    decryptBtn.disabled = true;
+  }
+</script>
+</body>
+</html>
+
